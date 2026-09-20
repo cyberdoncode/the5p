@@ -1,0 +1,233 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  // Pooled connection (Neon "-pooler" host). Used by the app at runtime so that
+  // serverless functions don't exhaust Postgres connections.
+  url       = env("DATABASE_URL")
+  // Direct, unpooled connection. Migrations need session-level state and
+  // advisory locks, which a transaction pooler cannot provide.
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  timezone     String   @default("UTC")
+  weekStart    String   @default("monday")
+  currency     String   @default("USD")
+  accent       String   @default("gold")
+  createdAt    DateTime @default(now())
+
+  tasks        Task[]
+  projects     Project[]
+  goals        Goal[]
+  habits       Habit[]
+  habitLogs    HabitLog[]
+  journals     JournalEntry[]
+  events       CalendarEvent[]
+  expenses     Expense[]
+  budgets      Budget[]
+  notes        Note[]
+  reviews      Review[]
+  priorities   DailyPriority[]
+}
+
+model Task {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  notes       String?
+  status      String    @default("todo") // todo | doing | done
+  priority    String    @default("medium") // low | medium | high | critical
+  dueDate     DateTime?
+  scheduledAt DateTime?
+  estimate    Int? // minutes
+  recurrence  String? // none | daily | weekly | monthly
+  completedAt DateTime?
+  projectId   String?
+  project     Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestoneId String?
+  milestone   Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  order       Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([userId, status])
+  @@index([userId, dueDate])
+}
+
+model Project {
+  id          String     @id @default(cuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  status      String     @default("active") // active | paused | done
+  color       String     @default("#C8A35A")
+  goalId      String?
+  goal        Goal?      @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  dueDate     DateTime?
+  createdAt   DateTime   @default(now())
+
+  tasks       Task[]
+  milestones  Milestone[]
+}
+
+model Goal {
+  id          String    @id @default(cuid())
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title       String
+  why         String?
+  horizon     String    @default("year") // quarter | year | life
+  targetDate  DateTime?
+  status      String    @default("active") // active | achieved | archived
+  progress    Int       @default(0)
+  createdAt   DateTime  @default(now())
+
+  projects    Project[]
+}
+
+model Milestone {
+  id        String    @id @default(cuid())
+  projectId String
+  project   Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title     String
+  done      Boolean   @default(false)
+  dueDate   DateTime?
+  order     Int       @default(0)
+
+  tasks     Task[]
+}
+
+model Habit {
+  id        String     @id @default(cuid())
+  userId    String
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  cue       String?
+  cadence   String     @default("daily") // daily | weekdays | weekly
+  targetPerWeek Int    @default(7)
+  color     String     @default("#C8A35A")
+  icon      String     @default("flame")
+  archived  Boolean    @default(false)
+  createdAt DateTime   @default(now())
+
+  logs      HabitLog[]
+}
+
+model HabitLog {
+  id      String   @id @default(cuid())
+  habitId String
+  habit   Habit    @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  userId  String
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date    String // yyyy-MM-dd in user's local day
+  done    Boolean  @default(true)
+
+  @@unique([habitId, date])
+  @@index([userId, date])
+}
+
+model JournalEntry {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   @default("daily") // daily | morning | night | free
+  date      String // yyyy-MM-dd
+  title     String?
+  body      String   @default("")
+  answers   String   @default("{}") // JSON map of prompt -> answer
+  mood      Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, date])
+}
+
+model CalendarEvent {
+  id       String   @id @default(cuid())
+  userId   String
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title    String
+  notes    String?
+  start    DateTime
+  end      DateTime
+  allDay   Boolean  @default(false)
+  category String   @default("focus") // focus | meeting | personal | health | admin
+  color    String   @default("#C8A35A")
+
+  @@index([userId, start])
+}
+
+model Expense {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  kind      String   @default("expense") // income | expense | saving | debt
+  label     String
+  amount    Float
+  category  String   @default("general")
+  date      String // yyyy-MM-dd
+  recurring Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, date])
+}
+
+model Budget {
+  id       String @id @default(cuid())
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category String
+  monthly  Float
+
+  @@unique([userId, category])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  body      String   @default("")
+  kind      String   @default("note") // note | idea | book | course | resource
+  tags      String   @default("")
+  pinned    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, kind])
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  period    String   @default("weekly") // weekly | monthly | yearly
+  periodKey String // 2026-W12 | 2026-03 | 2026
+  answers   String   @default("{}") // JSON
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, period, periodKey])
+}
+
+model DailyPriority {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date   String // yyyy-MM-dd
+  slot   Int // 1..5
+  taskId String?
+  text   String @default("")
+  done   Boolean @default(false)
+
+  @@unique([userId, date, slot])
+}
