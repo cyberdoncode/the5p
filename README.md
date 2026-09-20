@@ -20,6 +20,12 @@ Habits, Journal, Finance, Notes and Reviews — in one premium dark interface.
 | `DIRECT_URL`   | **Direct** connection — the same string *without* `-pooler`.             |
 | `AUTH_SECRET`  | Random string signing the session cookie. `openssl rand -base64 48`.     |
 
+Optional:
+
+| Variable           | What it is                                                                   |
+| ------------------ | ---------------------------------------------------------------------------- |
+| `SIGNUP_ALLOWLIST` | Comma-separated emails allowed to register. Unset means signup is open to all. |
+
 Two database URLs because the app runs on serverless functions. Runtime queries go through the
 pooler so hundreds of cold starts don't exhaust Postgres connections; migrations need session
 state and advisory locks that a transaction pooler can't provide, so they take the direct route.

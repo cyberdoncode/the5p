@@ -4,6 +4,15 @@ import { handle } from "@/lib/http";
 import { dayKey, lastNDays, weekKey, weekRange } from "@/lib/dates";
 import { endOfDay, startOfDay, addDays } from "date-fns";
 
+/** Most urgent first. Anything unrecognised sorts to the bottom. */
+const PRIORITY_RANK: Record<string, number> = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+const PRIORITY_FALLBACK = 99;
+
 export async function GET() {
   return handle(async () => {
     const userId = await requireUserId();
@@ -32,7 +41,10 @@ export async function GET() {
             { scheduledAt: { gte: startOfDay(now), lte: endOfDay(now) } },
           ],
         },
-        orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
+        // Priority is a string column, so the database would sort it
+        // alphabetically ("medium" above "critical"). Ordered by due date here
+        // and re-sorted by real priority below.
+        orderBy: [{ dueDate: "asc" }],
         include: { project: { select: { id: true, name: true, color: true } } },
         take: 25,
       }),
@@ -59,6 +71,16 @@ export async function GET() {
         include: { projects: { include: { tasks: { select: { status: true } } } } },
       }),
     ]);
+
+    tasks.sort((a, b) => {
+      const byPriority =
+        (PRIORITY_RANK[a.priority] ?? PRIORITY_FALLBACK) -
+        (PRIORITY_RANK[b.priority] ?? PRIORITY_FALLBACK);
+      if (byPriority !== 0) return byPriority;
+      if (!a.dueDate) return b.dueDate ? 1 : 0;
+      if (!b.dueDate) return -1;
+      return a.dueDate.getTime() - b.dueDate.getTime();
+    });
 
     const [doneThisWeek, createdThisWeek] = await Promise.all([
       prisma.task.count({
